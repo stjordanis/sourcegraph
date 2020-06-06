@@ -32,66 +32,6 @@ scalar JSONCString
 
 # A mutation.
 type Mutation {
-    # Create a list of changesets in a specific repository on a code host (e.g.,
-    # pull requests on GitHub). If a changeset with the given input already
-    # exists, it is returned instead of a new entry being added to the database.
-    createChangesets(input: [CreateChangesetInput!]!): [ExternalChangeset!]!
-    # Add a list of changesets to a campaign. The campaign must not have a patchset.
-    addChangesetsToCampaign(campaign: ID!, changesets: [ID!]!): Campaign!
-    # Create a campaign in a namespace. The newly created campaign is returned.
-    createCampaign(input: CreateCampaignInput!): Campaign!
-    # Create a patchset from patches (in unified diff format) that are computed by the caller.
-    #
-    # To create the campaign, call createCampaign with the returned PatchSet.id in the
-    # CreateCampaignInput.patchSet field.
-    createPatchSetFromPatches(
-        # A list of patches (diffs) to apply to repositories (in new branches) when a campaign is
-        # created from this PatchSet.
-        patches: [PatchInput!]!
-    ): PatchSet!
-    # Updates a campaign. Updating is not allowed when any of the following are true:
-    #
-    # - The campaign has been closed.
-    # - A campaign has one or more patches that are being published.
-    # - The new patch set contains no patches.
-    updateCampaign(input: UpdateCampaignInput!): Campaign!
-    # Retry publishing all changesets in the campaign that could not be
-    # successfully created on the code host. Retrying will clear the errors
-    # list of a campaign.
-    retryCampaignChangesets(campaign: ID!): Campaign!
-    # Delete a campaign.
-    deleteCampaign(
-        campaign: ID!
-        # Whether to close the changesets associated with this campaign on their respective code
-        # hosts. "Close" means the appropriate final state on the code host (e.g., "closed" on
-        # GitHub and "declined" on Bitbucket Server).
-        closeChangesets: Boolean = false
-    ): EmptyResponse
-    # Close a campaign.
-    closeCampaign(
-        campaign: ID!
-        # Whether to close the changesets associated with this campaign on their respective code
-        # hosts. "Close" means the appropriate final state on the code host (e.g., "closed" on
-        # GitHub and "declined" on Bitbucket Server).
-        closeChangesets: Boolean = false
-    ): Campaign!
-    # Create an ExternalChangeset on the code host asynchronously for each
-    # patch belonging to the patchset that has been attached to a campaign;
-    # otherwise, an error is returned and no ExternalChangesets are created.
-    # Callers can query the campaign's status to track the progress of this async operation.
-    # If one of the patches has previously been published but the publication failed,
-    # publication is NOT retried.
-    publishCampaignChangesets(campaign: ID!): Campaign!
-    # Create an ExternalChangeset on the code host asynchronously. The patch
-    # must belong to a patchset that has been attached to a campaign;
-    # otherwise, an error is returned and no ExternalChangeset is created.
-    # Callers can query the campaign's status to track the progress of this async operation.
-    # If the patch has previously been published but the publication failed,
-    # the patch is reset and publication will be retried.
-    publishChangeset(patch: ID!): EmptyResponse!
-    # Enqueue the given changeset for high-priority syncing.
-    syncChangeset(changeset: ID!): EmptyResponse!
-
     # Updates the user profile information for the user with the given ID.
     #
     # Only the user and site admins may perform this mutation.
@@ -427,6 +367,125 @@ type Mutation {
     # repository permissions and syncs them to Sourcegraph, so that the current permissions apply to
     # the user's operations on Sourcegraph.
     scheduleUserPermissionsSync(user: ID!): EmptyResponse!
+
+    #
+    # CAMPAIGNS
+    #
+
+    # Create a campaign from a campaign spec and locally computed changeset specs. If a campaign in
+    # the same namespace with the same name already exists, an error is returned. The newly created
+    # campaign is returned.
+    createCampaign(
+        # The campaign's namespace (either a user or organization).
+        namespace: ID!
+        campaignSpec: ID! # CampaignSpec.id
+    ): Campaign!
+
+    # Create or update a campaign from a campaign spec and locally computed changeset specs. If no
+    # campaign exists in the namespace with the name given in the campaign spec, a campaign will be
+    # created. Otherwise, the existing campaign will be updated. The campaign is returned.
+    applyCampaign(
+        # The campaign's namespace (either a user or organization).
+        namespace: ID!
+
+        campaignSpec: ID! # CampaignSpec.id
+        # If set, return an error if the campaign identified using the namespace and spec parameters
+        # does not match the campaign with this ID. This lets callers use a stable ID that refers to
+        # a specific campaign during an edit session (and is not susceptible to conflicts if the
+        # underlying campaign is moved to a different namespace or renamed).
+        #
+        # TODO - this is kinda weird but seems useful to avoid someone accidentally clobbering
+        # changes on a campaign when someone else renamed/moved it without their knowledge (eg if
+        # they kept a browser tab open or reused a CLI history entry).
+        campaign: ID
+    ): Campaign!
+
+    # Move a campaign to a different namespace, or rename it in the current namespace.
+    moveCampaign(campaign: ID!, newName: String, newNamespace: ID): Campaign!
+
+    # Close a campaign.
+    closeCampaign(
+        campaign: ID!
+        # Whether to close the changesets associated with this campaign on their respective code
+        # hosts. "Close" means the appropriate final state on the code host (e.g., "closed" on
+        # GitHub and "declined" on Bitbucket Server).
+        closeChangesets: Boolean = false
+    ): Campaign!
+
+    # Delete a campaign. A deleted campaign is completely removed and can't be un-deleted. The
+    # campaign's changesets are kept as-is; to close them, use the closeCampaign mutation first.
+    deleteCampaign(campaign: ID!): EmptyResponse
+
+    # Upload a changeset spec that will be used in a future update to a campaign. The changeset spec
+    # is stored and can be referenced by its ID in the applyCampaign mutation. Just uploading the
+    # changeset spec does not result in changes to the campaign or any of its changesets; you need
+    # to call applyCampaign to use it.
+    #
+    # You can use this mutation to upload large changeset specs (e.g., containing large diffs) in
+    # individual HTTP requests. Then, in the eventual applyCampaign call, you just refer to the
+    # changeset specs by their IDs. This lets you avoid problems when updating large campaigns where
+    # a large HTTP request body (e.g., with many large diffs in the changeset specs) would be
+    # rejected by the web server/proxy or would be very slow.
+    #
+    # The returned ChangesetSpec is immutable and expires after a certain period of time (if not
+    # used in a call to applyCampaign), which can be queried on ChangesetSpec.expiresAt.
+    createChangesetSpec(
+        # TODO(sqs): the raw changeset spec, as JSON or something?
+        changesetSpec: String!
+    ): ChangesetSpec!
+
+    # Upload a campaign spec that will be used in a future update to a campaign (with
+    # applyCampaign).
+    #
+    # The returned CampaignSpec is immutable and expires after a certain period of time (if not used
+    # in a call to applyCampaign), which can be queried on CampaignSpec.expiresAt.
+    createCampaignSpec(
+        # The campaign spec as YAML (TODO also allow JSON for easier machine-creation or creation from JS web clients?).
+        campaignSpec: String!
+        # Changeset specs that were locally computed and then uploaded using createChangesetSpec.
+        changesetSpecs: [ID!]!
+    ): CampaignSpec!
+
+    # Compute the delta (difference) between a campaign's desired state (spec) and its actual state
+    # (status).
+    #
+    # TODO(sqs): There may be a query form of this that creates a CampaignDelta without persisting
+    # it, for when this just needs to be shown in the UI immediately.
+    computeCampaignDelta(
+        campaign: ID!
+
+        campaignSpec: CampaignSpecInput!
+        campaignSpecID: ID!
+    ): CampaignDelta!
+
+    # Enqueue the given changeset for high-priority syncing.
+    syncChangeset(changeset: ID!): EmptyResponse!
+}
+
+# An immutable description of the desired state of a changeset in a campaign.
+type ChangesetSpec implements Node {
+    id: ID! # unguessable ID
+    expiresAt: DateTime
+}
+
+# An immutable description of the desired state of a campaign.
+type CampaignSpec implements Node {
+    changesetSpecs: [ChangesetSpec!]!
+    expiresAt: DateTime
+}
+
+# The delta (difference) between a campaign's desired state (spec) and its actual state (status) at
+# a given point in time.
+#
+# NOTE: This would be used for BOTH (1) showing applyCampaign previews AND (2) after you
+# applyCampaign, showing you 'what still needs to be done to reconcile the actual state with the
+# desired state' (ie the 'status indicator').
+type CampaignDelta implements Node {
+    # TODO(sqs): add more fields here
+
+    # The point in time when the delta was created and the actual state was captured. Since this
+    # time, the actual state may have changed; those changes are not captured in this delta.
+    createdAt: DateTime!
 }
 
 # A user (identified either by username or email address) with its repository permission.
@@ -894,6 +953,52 @@ type ChangesetConnection {
 
     # Pagination information.
     pageInfo: PageInfo!
+
+    # Information about filters that can be applied to the list.
+    filters: ChangesetConnectionFilters!
+}
+
+# Filters that can be applied to a list of changesets.
+type ChangesetConnectionFilters {
+    # Repository filters.
+    repository: [RepositoryFilter!]!
+
+    # Label filters.
+    label: [LabelFilter!]!
+
+    # The number of changesets in the connection (ignoring pagination) that are open.
+    openCount: Int!
+
+    # The number of changesets in the connection (ignoring pagination) that are closed or merged.
+    closedCount: Int!
+}
+
+# A repository filter that can be applied to a list.
+type RepositoryFilter {
+    # The repository.
+    repository: Repository!
+
+    # The item count for this filter.
+    count: Int
+
+    # Whether this filter is currently applied to the list.
+    isApplied: Boolean!
+}
+
+# A label filter that can be applied to a list.
+type LabelFilter {
+    # The label. If the list contains items labeled with labels of the same name from different
+    # repositories, this field is null.
+    label: ChangesetLabel
+
+    # The label name.
+    labelName: String!
+
+    # The item count for this filter.
+    count: Int
+
+    # Whether this filter is currently applied to the list.
+    isApplied: Boolean!
 }
 
 # A list of patches.

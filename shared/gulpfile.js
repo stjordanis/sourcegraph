@@ -60,7 +60,7 @@ async function graphQLTypes() {
 
 async function watchGraphQLTypes() {
   await new Promise((resolve, reject) => {
-    gulp.watch(GRAPHQL_SCHEMA_PATH, graphQLTypes).on('error', reject)
+    gulp.watch(GRAPHQL_SCHEMA_PATH, () => graphQLTypes().catch(error => console.error(error))).on('error', reject)
   })
 }
 
