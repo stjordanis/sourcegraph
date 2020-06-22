@@ -70,6 +70,8 @@
 // 1528395683_empty.up.sql (159B)
 // 1528395684_lsif_num_resets.down.sql (293B)
 // 1528395684_lsif_num_resets.up.sql (340B)
+// 1528395685_alter_permissions_object_ids_to_intarray.down.sql (863B)
+// 1528395685_alter_permissions_object_ids_to_intarray.up.sql (805B)
 
 package migrations
 
@@ -1538,6 +1540,46 @@ func _1528395684_lsif_num_resetsUpSql() (*asset, error) {
 	return a, nil
 }
 
+var __1528395685_alter_permissions_object_ids_to_intarrayDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\xac\x91\x51\x4b\xc3\x30\x14\x85\xdf\xf3\x2b\xee\xdb\x5e\x85\x3d\xe6\x29\x6d\xee\x24\x90\x26\xd2\xde\xc0\x04\x41\xaa\x0b\x12\xc1\x74\x24\x13\xf4\xdf\x0b\xea\xb0\x6e\xcd\x28\xd6\x3c\x9f\xf3\x71\xbe\xdc\x0a\xaf\x95\xe1\x8c\x51\xeb\x4c\x2d\x08\x81\x44\xa5\x11\x92\xdf\x0f\xf7\x7b\x9f\x5e\x42\xce\x61\x88\x99\x9f\x06\x5e\xb3\x4f\x17\x03\xdf\x84\xb8\x0b\xf1\x69\x0e\x69\x22\xc8\x84\x26\x6c\x0b\x8b\x40\xb6\xf6\x06\x6a\xab\x5d\x63\x40\x6d\x00\xb7\xaa\xa3\xee\x8b\x16\x76\x99\xff\x2a\x9f\xae\x2d\x94\x87\x87\x67\xff\x78\x38\xaf\x97\x5c\xfe\xb2\x61\x2e\x64\xbc\xe5\xb2\x8b\x90\xf2\x58\xff\x29\x41\x75\x4b\x28\xc0\x58\x02\xe3\xb4\x06\x89\x1b\xe1\x34\xc1\xea\xee\x6d\xdd\xaf\xaf\xc6\x6f\x35\x29\x3b\xc9\x3f\x9a\x2d\xa6\x9f\xff\xc2\x3f\x5b\x14\x7f\x7b\xb1\x0d\xfb\xbc\x17\x6e\x09\x4d\xa7\xec\xf8\x64\x21\x1e\xfa\x94\xfa\x77\xce\x58\x6d\x9b\x46\x11\x67\x1f\x01\x00\x00\xff\xff\x58\x55\xb9\x76\x5f\x03\x00\x00")
+
+func _1528395685_alter_permissions_object_ids_to_intarrayDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1528395685_alter_permissions_object_ids_to_intarrayDownSql,
+		"1528395685_alter_permissions_object_ids_to_intarray.down.sql",
+	)
+}
+
+func _1528395685_alter_permissions_object_ids_to_intarrayDownSql() (*asset, error) {
+	bytes, err := _1528395685_alter_permissions_object_ids_to_intarrayDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1528395685_alter_permissions_object_ids_to_intarray.down.sql", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0x73, 0xb7, 0x10, 0x60, 0x7f, 0xd8, 0x86, 0x9b, 0xe7, 0x38, 0x5a, 0xa4, 0x8c, 0xaf, 0x5e, 0x84, 0xba, 0x8a, 0x69, 0xc, 0xd, 0xc, 0xbc, 0x17, 0x9b, 0xa7, 0x62, 0xfe, 0xd0, 0xe8, 0x85, 0x35}}
+	return a, nil
+}
+
+var __1528395685_alter_permissions_object_ids_to_intarrayUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\xac\x90\xc1\x4a\x03\x31\x10\x86\xef\x79\x8a\xb9\xf5\x21\xf6\x94\x26\x53\x09\x64\x13\xc9\x4e\xa0\x20\x22\xd5\x06\x89\x60\xb6\x24\xf5\x20\xe2\xbb\x8b\xd5\xc5\x5a\x4d\x37\x88\xf7\x6f\xbe\x7c\xf9\x97\x78\xa1\x4c\xc7\x18\x39\x6f\x04\x27\x04\xe2\x4b\x8d\x90\xc3\x6e\xbc\xd9\x85\xfc\x18\x4b\x89\x63\x2a\xdd\x29\xf0\x54\x42\x3e\x0b\x7c\x1a\xd2\x36\xa6\xfb\x16\xd3\x2f\x20\xe3\x9a\xd0\x55\x8a\x40\x3a\x7b\x09\xc2\x6a\xdf\x1b\x50\x2b\xc0\xb5\x1a\x68\xf8\xb0\xc5\x6d\xe9\xbe\x1d\x9f\xd6\x56\x8e\xc7\xdb\x87\x70\xb7\xff\x79\x5e\xfb\xcb\x5f\x1a\x5a\x25\xc7\x2d\x4c\x38\x7c\x1f\x0c\xd7\x84\x66\x50\xf6\xc0\x19\x4b\x13\x1b\xd3\x7e\x93\xf3\xe6\x79\x6e\x32\x2e\xe5\xf4\xd0\xd4\x08\xca\xd0\xd5\xf5\x41\x66\xbc\xd6\x20\x71\xc5\xbd\x26\x58\xbc\xbc\x2e\x66\x36\x3c\xb2\x7d\xc5\xb6\xfb\xaa\xa3\xfe\x47\xe5\x59\x6b\x6b\x2d\x13\xb6\xef\x15\x75\xec\x2d\x00\x00\xff\xff\x87\xd6\xf7\xcc\x25\x03\x00\x00")
+
+func _1528395685_alter_permissions_object_ids_to_intarrayUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1528395685_alter_permissions_object_ids_to_intarrayUpSql,
+		"1528395685_alter_permissions_object_ids_to_intarray.up.sql",
+	)
+}
+
+func _1528395685_alter_permissions_object_ids_to_intarrayUpSql() (*asset, error) {
+	bytes, err := _1528395685_alter_permissions_object_ids_to_intarrayUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1528395685_alter_permissions_object_ids_to_intarray.up.sql", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0x22, 0xbd, 0xeb, 0xcd, 0xb, 0x29, 0x3b, 0x83, 0x64, 0xa0, 0xad, 0x77, 0xbf, 0xbf, 0xd1, 0x9e, 0x66, 0xc1, 0x2a, 0x98, 0xa6, 0x60, 0x5e, 0x4, 0x68, 0x4d, 0xf2, 0xb8, 0x5e, 0xef, 0x5d, 0x4e}}
+	return a, nil
+}
+
 // Asset loads and returns the asset for the given name.
 // It returns an error if the asset could not be found or
 // could not be loaded.
@@ -1699,6 +1741,8 @@ var _bindata = map[string]func() (*asset, error){
 	"1528395683_empty.up.sql":                                                 _1528395683_emptyUpSql,
 	"1528395684_lsif_num_resets.down.sql":                                     _1528395684_lsif_num_resetsDownSql,
 	"1528395684_lsif_num_resets.up.sql":                                       _1528395684_lsif_num_resetsUpSql,
+	"1528395685_alter_permissions_object_ids_to_intarray.down.sql":            _1528395685_alter_permissions_object_ids_to_intarrayDownSql,
+	"1528395685_alter_permissions_object_ids_to_intarray.up.sql":              _1528395685_alter_permissions_object_ids_to_intarrayUpSql,
 }
 
 // AssetDebug is true if the assets were built with the debug flag enabled.
@@ -1815,6 +1859,8 @@ var _bintree = &bintree{nil, map[string]*bintree{
 	"1528395683_empty.up.sql":                                                 {_1528395683_emptyUpSql, map[string]*bintree{}},
 	"1528395684_lsif_num_resets.down.sql":                                     {_1528395684_lsif_num_resetsDownSql, map[string]*bintree{}},
 	"1528395684_lsif_num_resets.up.sql":                                       {_1528395684_lsif_num_resetsUpSql, map[string]*bintree{}},
+	"1528395685_alter_permissions_object_ids_to_intarray.down.sql":            {_1528395685_alter_permissions_object_ids_to_intarrayDownSql, map[string]*bintree{}},
+	"1528395685_alter_permissions_object_ids_to_intarray.up.sql":              {_1528395685_alter_permissions_object_ids_to_intarrayUpSql, map[string]*bintree{}},
 }}
 
 // RestoreAsset restores an asset under the given directory.
