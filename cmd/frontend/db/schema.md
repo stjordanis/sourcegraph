@@ -783,7 +783,6 @@ Indexes:
  user_ids   | integer[]                | not null default '{}'::integer[]
 Indexes:
     "repo_permissions_perm_unique" UNIQUE CONSTRAINT, btree (repo_id, permission)
-    "idx_repo_permissions_user_ids_intarray" gist (user_ids gist__intbig_ops)
 
 ```
 
@@ -957,7 +956,6 @@ Indexes:
  object_ids  | integer[]                | not null default '{}'::integer[]
 Indexes:
     "user_permissions_perm_object_unique" UNIQUE CONSTRAINT, btree (user_id, permission, object_type)
-    "idx_user_permissions_object_ids_intarray" gist (object_ids gist__intbig_ops)
 
 ```
 
