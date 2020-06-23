@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,10 +12,7 @@ import (
 	"github.com/graph-gophers/graphql-go/relay"
 	"github.com/sourcegraph/go-diff/diff"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/db"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/globals"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend/graphqlutil"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	ee "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/campaigns"
@@ -42,39 +38,6 @@ func marshalPatchID(id int64) graphql.ID {
 func unmarshalPatchID(id graphql.ID) (cid int64, err error) {
 	err = relay.UnmarshalSpec(id, &cid)
 	return
-}
-
-var _ graphqlbackend.PatchSetResolver = &patchSetResolver{}
-
-type patchSetResolver struct {
-	store    *ee.Store
-	patchSet *campaigns.PatchSet
-}
-
-func (r *patchSetResolver) ID() graphql.ID {
-	return marshalPatchSetID(r.patchSet.ID)
-}
-
-func (r *patchSetResolver) Patches(
-	ctx context.Context,
-	args *graphqlutil.ConnectionArgs,
-) graphqlbackend.PatchConnectionResolver {
-	return &patchesConnectionResolver{
-		store: r.store,
-		opts: ee.ListPatchesOpts{
-			PatchSetID:   r.patchSet.ID,
-			Limit:        int(args.GetFirst()),
-			OnlyWithDiff: true,
-		},
-	}
-}
-
-func (r *patchSetResolver) DiffStat(ctx context.Context) (*graphqlbackend.DiffStat, error) {
-	return patchSetDiffStat(ctx, r.store, ee.ListPatchesOpts{
-		PatchSetID:   r.patchSet.ID,
-		Limit:        -1, // Fetch all patches in a patch set
-		OnlyWithDiff: true,
-	})
 }
 
 func patchSetDiffStat(ctx context.Context, store *ee.Store, opts ee.ListPatchesOpts) (*graphqlbackend.DiffStat, error) {
@@ -119,213 +82,6 @@ func patchSetDiffStat(ctx context.Context, store *ee.Store, opts ee.ListPatchesO
 	}
 
 	return total, nil
-}
-
-func (r *patchSetResolver) PreviewURL() string {
-	u := globals.ExternalURL().ResolveReference(&url.URL{Path: "/campaigns/new"})
-	q := url.Values{}
-	q.Set("patchSet", string(r.ID()))
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-type patchesConnectionResolver struct {
-	store *ee.Store
-	opts  ee.ListPatchesOpts
-
-	// cache results because they are used by multiple fields
-	once                   sync.Once
-	patches                []*campaigns.Patch
-	reposByID              map[api.RepoID]*types.Repo
-	changesetJobsByPatchID map[int64]*campaigns.ChangesetJob
-	next                   int64
-	err                    error
-}
-
-func (r *patchesConnectionResolver) Nodes(ctx context.Context) ([]graphqlbackend.PatchInterfaceResolver, error) {
-	patches, reposByID, changesetJobsByPatchID, _, err := r.compute(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	resolvers := make([]graphqlbackend.PatchInterfaceResolver, 0, len(patches))
-	for _, j := range patches {
-		repo, ok := reposByID[j.RepoID]
-		if !ok {
-			// If it's not in reposByID the repository was either deleted or
-			// filtered out by the authz-filter.
-			// Use a hiddenPatchResolver.
-			resolvers = append(resolvers, &hiddenPatchResolver{patch: j})
-			continue
-		}
-
-		resolver := &patchResolver{
-			store:         r.store,
-			patch:         j,
-			preloadedRepo: repo,
-			// We set this to true, because we tried to preload the
-			// changestJob, but maybe we couldn't find one.
-			attemptedPreloadChangesetJob: true,
-		}
-
-		changesetJob, ok := changesetJobsByPatchID[j.ID]
-		if ok {
-			resolver.preloadedChangesetJob = changesetJob
-		}
-
-		resolvers = append(resolvers, resolver)
-	}
-	return resolvers, nil
-}
-
-func (r *patchesConnectionResolver) compute(ctx context.Context) ([]*campaigns.Patch, map[api.RepoID]*types.Repo, map[int64]*campaigns.ChangesetJob, int64, error) {
-	r.once.Do(func() {
-		r.patches, r.next, r.err = r.store.ListPatches(ctx, r.opts)
-		if r.err != nil {
-			return
-		}
-
-		repoIDs := make([]api.RepoID, len(r.patches))
-		for i, j := range r.patches {
-			repoIDs[i] = j.RepoID
-		}
-
-		// 🚨 SECURITY: db.Repos.GetByIDs uses the authzFilter under the hood and
-		// filters out repositories that the user doesn't have access to.
-		rs, err := db.Repos.GetByIDs(ctx, repoIDs...)
-		if err != nil {
-			r.err = err
-			return
-		}
-
-		r.reposByID = make(map[api.RepoID]*types.Repo, len(rs))
-		for _, repo := range rs {
-			r.reposByID[repo.ID] = repo
-		}
-
-		cs, _, err := r.store.ListChangesetJobs(ctx, ee.ListChangesetJobsOpts{
-			PatchSetID: r.opts.PatchSetID,
-			Limit:      -1,
-		})
-		if err != nil {
-			r.err = err
-			return
-		}
-		r.changesetJobsByPatchID = make(map[int64]*campaigns.ChangesetJob, len(cs))
-		for _, c := range cs {
-			r.changesetJobsByPatchID[c.PatchID] = c
-		}
-	})
-	return r.patches, r.reposByID, r.changesetJobsByPatchID, r.next, r.err
-}
-
-func (r *patchesConnectionResolver) TotalCount(ctx context.Context) (int32, error) {
-	opts := ee.CountPatchesOpts{
-		PatchSetID:                r.opts.PatchSetID,
-		OnlyWithDiff:              r.opts.OnlyWithDiff,
-		OnlyUnpublishedInCampaign: r.opts.OnlyUnpublishedInCampaign,
-	}
-	count, err := r.store.CountPatches(ctx, opts)
-	return int32(count), err
-}
-
-func (r *patchesConnectionResolver) PageInfo(ctx context.Context) (*graphqlutil.PageInfo, error) {
-	_, _, _, next, err := r.compute(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return graphqlutil.HasNextPage(next != 0), nil
-}
-
-type patchResolver struct {
-	store *ee.Store
-
-	patch         *campaigns.Patch
-	preloadedRepo *types.Repo
-
-	// Set if we tried to preload the changesetjob
-	attemptedPreloadChangesetJob bool
-	// This is only set if we tried to preload and found a ChangesetJob. If we
-	// tried preloading, but couldn't find anything, it's nil.
-	preloadedChangesetJob *campaigns.ChangesetJob
-
-	// cache repo because it's called more than one time
-	once   sync.Once
-	err    error
-	repo   *graphqlbackend.RepositoryResolver
-	commit *graphqlbackend.GitCommitResolver
-}
-
-func (r *patchResolver) ToPatch() (graphqlbackend.PatchResolver, bool) {
-	return r, true
-}
-
-func (r *patchResolver) ToHiddenPatch() (graphqlbackend.HiddenPatchResolver, bool) {
-	return nil, false
-}
-
-func (r *patchResolver) computeRepoCommit(ctx context.Context) (*graphqlbackend.RepositoryResolver, *graphqlbackend.GitCommitResolver, error) {
-	r.once.Do(func() {
-		if r.preloadedRepo != nil {
-			r.repo = graphqlbackend.NewRepositoryResolver(r.preloadedRepo)
-		} else {
-			r.repo, r.err = graphqlbackend.RepositoryByIDInt32(ctx, r.patch.RepoID)
-			if r.err != nil {
-				return
-			}
-		}
-		args := &graphqlbackend.RepositoryCommitArgs{Rev: string(r.patch.Rev)}
-		r.commit, r.err = r.repo.Commit(ctx, args)
-	})
-	return r.repo, r.commit, r.err
-}
-
-func (r *patchResolver) ID() graphql.ID {
-	return marshalPatchID(r.patch.ID)
-}
-
-func (r *patchResolver) Repository(ctx context.Context) (*graphqlbackend.RepositoryResolver, error) {
-	repo, _, err := r.computeRepoCommit(ctx)
-	return repo, err
-}
-
-func (r *patchResolver) BaseRepository(ctx context.Context) (*graphqlbackend.RepositoryResolver, error) {
-	return r.Repository(ctx)
-}
-
-func (r *patchResolver) PublicationEnqueued(ctx context.Context) (bool, error) {
-	// We tried to preload a ChangesetJob for this Patch
-	if r.attemptedPreloadChangesetJob {
-		if r.preloadedChangesetJob == nil {
-			return false, nil
-		}
-		return r.preloadedChangesetJob.FinishedAt.IsZero(), nil
-	}
-
-	cj, err := r.store.GetChangesetJob(ctx, ee.GetChangesetJobOpts{PatchID: r.patch.ID})
-	if err != nil && err != ee.ErrNoResults {
-		return false, err
-	}
-	if err == ee.ErrNoResults {
-		return false, nil
-	}
-
-	// FinishedAt is always set once the ChangesetJob is finished, even if it
-	// failed. If it's zero, we're still executing the job. If not, we're
-	// done and the "publication" is not "enqueued" anymore.
-	return cj.FinishedAt.IsZero(), nil
-}
-
-func (r *patchResolver) Diff() graphqlbackend.PatchResolver {
-	return r
-}
-
-func (r *patchResolver) FileDiffs(ctx context.Context, args *graphqlbackend.FileDiffsConnectionArgs) (graphqlbackend.FileDiffConnection, error) {
-	_, commit, err := r.computeRepoCommit(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return graphqlbackend.NewFileDiffConnectionResolver(commit, commit, args, fileDiffConnectionCompute(r.patch), previewNewFile), nil
 }
 
 func fileDiffConnectionCompute(patch *campaigns.Patch) func(ctx context.Context, args *graphqlbackend.FileDiffsConnectionArgs) ([]*diff.FileDiff, int32, bool, error) {
@@ -443,26 +199,4 @@ func applyPatch(fileContent string, fileDiff *diff.FileDiff) string {
 		newContentLines = append(newContentLines, contentLines[lastLine-1:]...)
 	}
 	return strings.Join(newContentLines, "\n")
-}
-
-type hiddenPatchResolver struct {
-	patch *campaigns.Patch
-}
-
-func (r *hiddenPatchResolver) ToPatch() (graphqlbackend.PatchResolver, bool) {
-	return nil, false
-}
-
-func (r *hiddenPatchResolver) ToHiddenPatch() (graphqlbackend.HiddenPatchResolver, bool) {
-	return r, true
-}
-
-func (r *hiddenPatchResolver) ID() graphql.ID {
-	return marshalHiddenPatchID(r.patch.ID)
-}
-
-const hiddenPatchIDKind = "HiddenPatch"
-
-func marshalHiddenPatchID(id int64) graphql.ID {
-	return relay.MarshalID(hiddenPatchIDKind, id)
 }
