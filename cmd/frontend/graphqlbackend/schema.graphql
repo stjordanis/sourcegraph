@@ -393,10 +393,11 @@ type Mutation {
         # The campaign spec that describes the new desired state of the campaign.
         campaignSpec: ID!
 
-        # If set, return an error if the campaign identified using the namespace and spec parameters
-        # does not match the campaign with this ID. This lets callers use a stable ID that refers to
-        # a specific campaign during an edit session (and is not susceptible to conflicts if the
-        # underlying campaign is moved to a different namespace or renamed).
+        # If set, return an error if the campaign identified using the namespace and campaignSpec
+        # parameters does not match the campaign with this ID. This lets callers use a stable ID
+        # that refers to a specific campaign during an edit session (and is not susceptible to
+        # conflicts if the underlying campaign is moved to a different namespace, renamed, or
+        # deleted).
         ensureCampaign: ID
     ): Campaign!
 
@@ -441,8 +442,13 @@ type Mutation {
     # The returned CampaignSpec is immutable and expires after a certain period of time (if not used
     # in a call to applyCampaign), which can be queried on CampaignSpec.expiresAt.
     createCampaignSpec(
+        # The namespace (either a user or organization). A campaign spec can only be applied to (or
+        # used to create) campaigns in this namespace.
+        namespace: ID!
+
         # The campaign spec as YAML (or the equivalent JSON).
         campaignSpec: String!
+
         # Changeset specs that were locally computed and then uploaded using createChangesetSpec.
         changesetSpecs: [ID!]!
     ): CampaignSpec!
@@ -477,8 +483,7 @@ type ChangesetSpec implements Node {
 type CampaignSpec implements Node {
     # The unique ID for a campaign spec.
     #
-    # The ID is unguessable (i.e., long and randomly generated, not sequential). See
-    # ChangesetSpec.id for an explanation why.
+    # TODO(sqs): document permissions and ID guessability
     id: ID!
 
     # The original YAML or JSON input that was used to create this campaign spec.
@@ -497,9 +502,17 @@ type CampaignSpec implements Node {
     # The date when this campaign spec was created.
     createdAt: DateTime
 
+    # The namespace (either a user or organization) of the campaign spec.
+    namespace: Namespace
+
     # The date, if any, when this campaign spec expires and is automatically purged. A campaign spec
     # never expires if it has been applied.
     expiresAt: DateTime
+
+    # The URL of a web page that displays a preview of applying this campaign spec. If the campaign
+    # spec's name refers to an existing campaign in the namespace, the preview shows what will be
+    # updated. Otherwise it shows what will be created.
+    previewURL: String!
 }
 
 # The delta (difference) between a campaign's desired state (spec) and its actual state (status) at
@@ -1493,11 +1506,11 @@ type Query {
         viewerCanAdminister: Boolean
     ): CampaignConnection!
 
-    # Preview the effect of applying a campaign spec. If an existing campaign ID is provided, it
-    # returns the delta (difference) between a campaign's desired state (spec) and its actual state
-    # (status), as a list of changes to be applied to external state (such as repositories and
-    # changesets on code hosts). If no campaign ID is provided, it returns the operations that need
-    # to be performed to create the campaign.
+    # Preview the effect of applying a campaign spec. If an existing campaign exists in the
+    # namespace with the same name as that in the campaign spec, it returns the delta (difference)
+    # between the campaign's desired state (spec) and its actual state (status), as a list of
+    # changes to be applied to external state (such as repositories and changesets on code hosts).
+    # Otherwise, it returns the operations that need to be performed to create the campaign.
     #
     # The result is a snapshot and may immediately become stale because it is dependent on external
     # state that can change at any time (e.g., a repository on a code host is updated).
@@ -1505,12 +1518,17 @@ type Query {
     # The result is computed using the viewer's credentials. Two viewers with different access
     # levels to the associated repositories may see different results from this query.
     campaignDelta(
-        # The existing campaign to diff against. If null, preview the creation of a new campaign
-        # with the given campaign spec.
-        campaign: ID
+        # The namespace in which to compute the delta.
+        namespace: ID!
 
         # The desired state of the campaign.
         campaignSpec: ID!
+
+        # If set, return an error if the campaign identified using the namespace and campaignSpec
+        # parameters does not match the campaign with this ID. This lets callers use a stable ID
+        # that refers to a specific campaign during an edit session (and is not susceptible to
+        # conflicts if the underlying campaign is moved to a different namespace, renamed, or deleted).
+        ensureCampaign: ID
     ): CampaignDelta!
 }
 
