@@ -446,46 +446,70 @@ type Mutation {
         changesetSpecs: [ID!]!
     ): CampaignSpec!
 
-    # Compute the delta (difference) between a campaign's desired state (spec) and its actual state
-    # (status).
-    #
-    # TODO(sqs): There may be a query form of this that creates a CampaignDelta without persisting
-    # it, for when this just needs to be shown in the UI immediately.
-    computeCampaignDelta(
-        campaign: ID!
-
-        campaignSpec: CampaignSpecInput!
-        campaignSpecID: ID!
-    ): CampaignDelta!
-
     # Enqueue the given changeset for high-priority syncing.
     syncChangeset(changeset: ID!): EmptyResponse!
 }
 
-# An immutable description of the desired state of a changeset in a campaign.
+# A changeset spec is an immutable description of the desired state of a changeset in a campaign. To
+# create a changeset spec, use the createChangesetSpec mutation.
 type ChangesetSpec implements Node {
-    id: ID! # unguessable ID
+    # The unique ID for a changeset spec.
+    #
+    # The ID is unguessable (i.e., long and randomly generated, not sequential). This is important
+    # even though repository permissions also apply to viewers of changeset specs, because being
+    # allowed to view a repository should not entitle a person to view all not-yet-published
+    # changesets for that repository. Consider a campaign to fix a security vulnerability: the
+    # campaign author may prefer to prepare all of the changesets in private so that the window
+    # between revealing the problem and merging the fixes is as short as possible.
+    id: ID!
+
+    # The date, if any, when this changeset spec expires and is automatically purged. A changeset
+    # spec never expires if its campaign spec has been applied.
     expiresAt: DateTime
 }
 
-# An immutable description of the desired state of a campaign.
+# A campaign spec is an immutable description of the desired state of a campaign. To create a
+# campaign spec, use the createCampaignSpec mutation.
 type CampaignSpec implements Node {
+    # The unique ID for a campaign spec.
+    id: ID!
+
+    # The original YAML or JSON input that was used to create this campaign spec.
+    originalInput: String!
+
+    # The parsed JSON value of the original input. If the original input was YAML, the YAML is
+    # converted to the equivalent JSON.
+    parsedInput: JSONValue!
+
+    # The specs for changesets associated with this campaign.
     changesetSpecs: [ChangesetSpec!]!
+
+    # The user who created this campaign spec (or null if the user no longer exists).
+    creator: User
+
+    # The date when this campaign spec was created.
+    createdAt: DateTime
+
+    # The date, if any, when this campaign spec expires and is automatically purged. A campaign spec
+    # never expires if it has been applied.
     expiresAt: DateTime
 }
 
 # The delta (difference) between a campaign's desired state (spec) and its actual state (status) at
-# a given point in time.
-#
-# NOTE: This would be used for BOTH (1) showing applyCampaign previews AND (2) after you
-# applyCampaign, showing you 'what still needs to be done to reconcile the actual state with the
-# desired state' (ie the 'status indicator').
-type CampaignDelta implements Node {
+# a given point in time. Because the campaign delta is computed based on external state, it may
+# become out-of-date immediately after creation (e.g., if the external state changes), so it must be
+# treated as a snapshot only and not as a definitive plan.
+type CampaignDelta {
     # TODO(sqs): add more fields here
 
     # The point in time when the delta was created and the actual state was captured. Since this
     # time, the actual state may have changed; those changes are not captured in this delta.
     createdAt: DateTime!
+
+    # The date when this campaign delta expires and is automatically purged. Campaign deltas are
+    # temporary to avoid consuming resources when they are no longer relevant. Purging a campaign
+    # delta does not modify the campaign or any changesets.
+    expiresAt: DateTime!
 }
 
 # A user (identified either by username or email address) with its repository permission.
@@ -1210,17 +1234,6 @@ type Query {
     # Looks up a node by ID.
     node(id: ID!): Node
 
-    # A list of campaigns.
-    campaigns(
-        # Returns the first n campaigns from the list.
-        first: Int
-        state: CampaignState
-        # Only return campaigns that have a patchset.
-        hasPatchSet: Boolean
-        # Only include campaigns that the viewer can administer.
-        viewerCanAdminister: Boolean
-    ): CampaignConnection!
-
     # Looks up a repository by either name or cloneURL.
     repository(
         # Query the repository by name, for example "github.com/gorilla/mux".
@@ -1457,6 +1470,41 @@ type Query {
         # 'LSIFIndexConnection.pageInfo.endCursor' that is returned.
         after: String
     ): LSIFIndexConnection!
+
+    #
+    # CAMPAIGNS
+    #
+
+    # A list of campaigns.
+    campaigns(
+        # Returns the first n campaigns from the list.
+        first: Int
+        state: CampaignState
+        # Only return campaigns that have a patchset.
+        hasPatchSet: Boolean
+        # Only include campaigns that the viewer can administer.
+        viewerCanAdminister: Boolean
+    ): CampaignConnection!
+
+    # Preview the effect of applying a campaign spec. If an existing campaign ID is provided, it
+    # returns the delta (difference) between a campaign's desired state (spec) and its actual state
+    # (status), as a list of changes to be applied to external state (such as repositories and
+    # changesets on code hosts). If no campaign ID is provided, it returns the operations that need
+    # to be performed to create the campaign.
+    #
+    # The result is a snapshot and may immediately become stale because it is dependent on external
+    # state that can change at any time (e.g., a repository on a code host is updated).
+    #
+    # The result is computed using the viewer's credentials. Two viewers with different access
+    # levels to the associated repositories may see different results from this query.
+    campaignDelta(
+        # The existing campaign to diff against. If null, preview the creation of a new campaign
+        # with the given campaign spec.
+        campaign: ID
+
+        # The desired state of the campaign.
+        campaignSpec: ID!
+    ): CampaignDelta!
 }
 
 # The version of the search syntax.
