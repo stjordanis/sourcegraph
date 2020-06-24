@@ -378,7 +378,9 @@ type Mutation {
     createCampaign(
         # The campaign's namespace (either a user or organization).
         namespace: ID!
-        campaignSpec: ID! # CampaignSpec.id
+
+        # The campaign spec that describes the desired state of the campaign.
+        campaignSpec: ID!
     ): Campaign!
 
     # Create or update a campaign from a campaign spec and locally computed changeset specs. If no
@@ -388,16 +390,14 @@ type Mutation {
         # The campaign's namespace (either a user or organization).
         namespace: ID!
 
-        campaignSpec: ID! # CampaignSpec.id
+        # The campaign spec that describes the new desired state of the campaign.
+        campaignSpec: ID!
+
         # If set, return an error if the campaign identified using the namespace and spec parameters
         # does not match the campaign with this ID. This lets callers use a stable ID that refers to
         # a specific campaign during an edit session (and is not susceptible to conflicts if the
         # underlying campaign is moved to a different namespace or renamed).
-        #
-        # TODO - this is kinda weird but seems useful to avoid someone accidentally clobbering
-        # changes on a campaign when someone else renamed/moved it without their knowledge (eg if
-        # they kept a browser tab open or reused a CLI history entry).
-        campaign: ID
+        ensureCampaign: ID
     ): Campaign!
 
     # Move a campaign to a different namespace, or rename it in the current namespace.
@@ -430,17 +430,18 @@ type Mutation {
     # The returned ChangesetSpec is immutable and expires after a certain period of time (if not
     # used in a call to applyCampaign), which can be queried on ChangesetSpec.expiresAt.
     createChangesetSpec(
-        # TODO(sqs): the raw changeset spec, as JSON or something?
+        # The raw changeset spec (as JSON).
         changesetSpec: String!
     ): ChangesetSpec!
 
-    # Upload a campaign spec that will be used in a future update to a campaign (with
-    # applyCampaign).
+    # Create a campaign spec that will be used to create a campaign (with the createCampaign
+    # mutation), to update to a campaign (with the applyCampaign mutation), or to preview either
+    # operation (with the campaignDelta query).
     #
     # The returned CampaignSpec is immutable and expires after a certain period of time (if not used
     # in a call to applyCampaign), which can be queried on CampaignSpec.expiresAt.
     createCampaignSpec(
-        # The campaign spec as YAML (TODO also allow JSON for easier machine-creation or creation from JS web clients?).
+        # The campaign spec as YAML (or the equivalent JSON).
         campaignSpec: String!
         # Changeset specs that were locally computed and then uploaded using createChangesetSpec.
         changesetSpecs: [ID!]!
@@ -462,6 +463,9 @@ type ChangesetSpec implements Node {
     # campaign author may prefer to prepare all of the changesets in private so that the window
     # between revealing the problem and merging the fixes is as short as possible.
     id: ID!
+
+    # TODO(sqs): add fields - the main requirements here will be imposed by the Campaign.changesets
+    # field and the CampaignDelta field describing the delta to changesets.
 
     # The date, if any, when this changeset spec expires and is automatically purged. A changeset
     # spec never expires if its campaign spec has been applied.
@@ -500,7 +504,7 @@ type CampaignSpec implements Node {
 # become out-of-date immediately after creation (e.g., if the external state changes), so it must be
 # treated as a snapshot only and not as a definitive plan.
 type CampaignDelta {
-    # TODO(sqs): add more fields here
+    # TODO(sqs): add more fields here to describe the delta
 
     # The point in time when the delta was created and the actual state was captured. Since this
     # time, the actual state may have changed; those changes are not captured in this delta.
