@@ -476,6 +476,9 @@ type ChangesetSpec implements Node {
 # campaign spec, use the createCampaignSpec mutation.
 type CampaignSpec implements Node {
     # The unique ID for a campaign spec.
+    #
+    # The ID is unguessable (i.e., long and randomly generated, not sequential). See
+    # ChangesetSpec.id for an explanation why.
     id: ID!
 
     # The original YAML or JSON input that was used to create this campaign spec.
