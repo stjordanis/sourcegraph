@@ -49,7 +49,6 @@ export class Services {
     public readonly textDocumentDefinition = new TextDocumentLocationProviderRegistry()
     public readonly textDocumentReferences = new TextDocumentLocationProviderRegistry<ReferenceParams>()
     public readonly textDocumentLocations = new TextDocumentLocationProviderIDRegistry()
-    public readonly textDocumentHover = {}
     public readonly textDocumentDecoration = new TextDocumentDecorationProviderRegistry()
     public readonly queryTransformer: { transformQuery?: (query: string) => Observable<string> } = {}
     public readonly panelViews = new PanelViewProviderRegistry()
